@@ -1,5 +1,5 @@
 {
-  "name": "ai-agent-room-backend",
+  "name": "ai-agent-room",
   "version": "1.0.0",
   "type": "module",
   "main": "server.js",

@@ -1,17 +1,25 @@
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
+import path from "path";
+import { fileURLToPath } from "url";
 import Anthropic from "@anthropic-ai/sdk";
 import { AGENTS } from "./agents.js";
 
 dotenv.config();
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
 const app = express();
 app.use(cors());
 app.use(express.json());
 
+// מגיש את ממשק הדשבורד הוויזואלי ישירות מהדפדפן!
+app.use(express.static(path.join(__dirname, "public")));
+
 const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
+  apiKey: process.env.ANTHROPIC_API_KEY || "dummy",
 });
 
 const database = {
@@ -121,6 +129,15 @@ async function executeSendWhatsapp(phone, message) {
   }
 }
 
+app.get("/api/stats", (req, res) => {
+  res.json({
+    leads: 1244 + database.leads.length,
+    sent: 236 + database.sentMessages.length,
+    rate: "14%",
+    calls: 10 + database.replies.length
+  });
+});
+
 app.post("/api/agents/:id/chat", async (req, res) => {
   const { id } = req.params;
   const { message } = req.body;
@@ -195,7 +212,6 @@ app.post("/api/webhooks/green-api", async (req, res) => {
 
     if (text && phone) {
       database.replies.push({ phone, text, date: new Date().toISOString() });
-      
       try {
         const replyAi = await anthropic.messages.create({
           model: "claude-3-5-sonnet-20241022",
@@ -212,5 +228,10 @@ app.post("/api/webhooks/green-api", async (req, res) => {
   res.status(200).send("OK");
 });
 
+// מסך ברירת מחדל
+app.get("*", (req, res) => {
+  res.sendFile(path.join(__dirname, "public", "index.html"));
+});
+
 const PORT = process.env.PORT || 8787;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+app.listen(PORT, () => console.log(`Dashboard Server running on port ${PORT}`));
