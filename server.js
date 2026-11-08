@@ -16,13 +16,12 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
 
-const geminiApiKey = process.env.GEMINI_API_KEY;
+const geminiApiKey = process.env.GEMINI_API_KEY || process.env.API_KEY || "";
 let genAI = null;
 if (geminiApiKey) {
   genAI = new GoogleGenerativeAI(geminiApiKey);
 }
 
-// 100% REAL SHARED DATABASE
 const db = {
   stats: { leadsCollected: 0, messagesSent: 0, responseRate: 0, callsBooked: 0 },
   agentsState: {
@@ -55,45 +54,43 @@ app.get("/api/events", (req, res) => {
 
 app.get("/api/state", (req, res) => res.json({ stats: db.stats, agentsState: db.agentsState, activityFeed: db.activityFeed, chats: db.chats }));
 
-// REAL TOOLS DEFINITION FOR GEMINI
 const agentTools = {
   functionDeclarations: [
     {
       name: "scrape_lawyers",
-      description: "הפעלת מנוע Apify כדי לסרוק מגוגל מפס עורכי דין לחדלות פירעון בישראל",
+      description: "סריקת משרדי עורכי דין לחדלות פירעון בישראל לפי עיר",
       parameters: {
         type: "OBJECT",
         properties: {
-          location: { type: "STRING", description: "העיר או האזור לסריקה (למשל: תל אביב, פתח תקווה)" },
-          limit: { type: "NUMBER", description: "כמות עסקים לסרוק (מקסימום 20)" }
+          location: { type: "STRING", description: "העיר לסריקה (לדוגמה: פתח תקווה, תל אביב)" },
+          limit: { type: "NUMBER", description: "כמות עסקים לסריקה" }
         },
         required: ["location"]
       }
     },
     {
       name: "send_whatsapp",
-      description: "שליחת הודעת וואטסאפ אמיתית למספר טלפון דרך Green-API",
+      description: "שליחת הודעת וואטסאפ אמיתית למספר טלפון",
       parameters: {
         type: "OBJECT",
         properties: {
-          phone: { type: "STRING", description: "מספר הטלפון בפורמט 9725XXXXXXXX" },
-          message: { type: "STRING", description: "תוכן ההודעה המדויק לשליחה" }
+          phone: { type: "STRING", description: "מספר טלפון בינלאומי" },
+          message: { type: "STRING", description: "תוכן ההודעה" }
         },
         required: ["phone", "message"]
       }
     },
     {
       name: "get_system_data",
-      description: "קבלת מצב המערכת האמיתי: כמות הלידים, שמות הלידים, וכמות ההודעות שנשלחו",
+      description: "קבלת מצב המערכת העדכני: כמות לידים, סטטוסים ושיחות",
       parameters: { type: "OBJECT", properties: {} }
     }
   ]
 };
 
-// REAL EXECUTIONS
 async function executeScrape(location, limit = 10) {
   const token = process.env.APIFY_TOKEN;
-  if (!token) return { error: "חסר APIFY_TOKEN בשרת. לא ניתן לבצע סריקה אמתית. אנא הוסף את המשתנה ב-Railway." };
+  if (!token) return { error: "חסר APIFY_TOKEN בהגדרות שרת ב-Railway" };
 
   try {
     const query = `עורך דין חדלות פירעון ${location}`;
@@ -103,15 +100,13 @@ async function executeScrape(location, limit = 10) {
       body: JSON.stringify({ searchStringsArray: [query], maxCrawledPlacesPerSearch: limit, language: "iw" })
     });
     const items = await res.json();
-    if (res.status !== 200 && res.status !== 201) return { error: "שגיאה מ-Apify", details: items };
-    
     let count = 0;
     const added = [];
     if (Array.isArray(items)) {
       for (const item of items) {
         const rawPhone = (item.phone || "").replace(/[^0-9]/g, "");
         if (rawPhone.startsWith("05") || rawPhone.startsWith("9725")) {
-          db.leads.push({ name: item.title, phone: rawPhone, city: location });
+          db.leads.push({ name: item.title, phone: rawPhone, city: location, status: "חדש" });
           added.push(item.title);
           count++;
         }
@@ -120,7 +115,7 @@ async function executeScrape(location, limit = 10) {
     db.stats.leadsCollected = db.leads.length;
     db.activityFeed.unshift({ id: Date.now(), time: new Date().toLocaleTimeString('he-IL', {hour: '2-digit', minute:'2-digit'}), title: `Apify סיים סריקה ב${location}`, desc: `נוספו ${count} לידים עם נייד`, tag: "Apify", type: "success" });
     broadcastUpdate();
-    return { success: true, newLeadsFound: count, names: added.slice(0,5) };
+    return { success: true, count, names: added.slice(0, 5) };
   } catch (err) {
     return { error: err.message };
   }
@@ -129,27 +124,79 @@ async function executeScrape(location, limit = 10) {
 async function executeSendWhatsapp(phone, message) {
   const id = process.env.GREEN_API_ID;
   const token = process.env.GREEN_API_TOKEN;
-  if (!id || !token) return { error: "חסר GREEN_API_ID או GREEN_API_TOKEN בהגדרות השרת." };
+  if (!id || !token) return { error: "חסר GREEN_API_ID או GREEN_API_TOKEN בשרת" };
 
   try {
     const clean = phone.replace(/[^0-9]/g, "");
     const chatId = clean.includes("@c.us") ? clean : `${clean}@c.us`;
     const res = await fetch(`https://api.green-api.com/waInstance${id}/sendMessage/${token}`, {
-      method: "POST", headers: { "Content-Type": "application/json" },
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ chatId, message })
     });
     const data = await res.json();
     if (data.idMessage) {
       db.stats.messagesSent++;
-      db.activityFeed.unshift({ id: Date.now(), time: new Date().toLocaleTimeString('he-IL', {hour: '2-digit', minute:'2-digit'}), title: "הודעה יצאה", desc: `נשלח ל-${phone}: ${message.substring(0,20)}...`, tag: "WhatsApp", type: "info" });
+      db.activityFeed.unshift({ id: Date.now(), time: new Date().toLocaleTimeString('he-IL', {hour: '2-digit', minute:'2-digit'}), title: "הודעה יצאה בוואטסאפ", desc: `נשלח ל-${phone}`, tag: "WhatsApp", type: "info" });
       broadcastUpdate();
       return { success: true, idMessage: data.idMessage };
     }
     return { error: "שגיאת וואטסאפ", details: data };
-  } catch(e) { return { error: e.message }; }
+  } catch (err) {
+    return { error: err.message };
+  }
 }
 
-// NO MORE FAKE FALLBACKS. 100% REAL GEMINI.
+// Auto-fallback model selection if a specific model identifier returns 404
+async function callGeminiModel(systemPrompt, userMessage, history) {
+  const candidateModels = ["gemini-1.5-flash-latest", "gemini-1.5-flash", "gemini-1.5-pro-latest", "gemini-pro"];
+  let lastError = null;
+
+  for (const modelName of candidateModels) {
+    try {
+      const model = genAI.getGenerativeModel({
+        model: modelName,
+        tools: [agentTools],
+        systemInstruction: systemPrompt
+      });
+
+      const formattedHistory = history.filter(m => m.sender !== "system").map(m => ({
+        role: m.sender === "user" ? "user" : "model",
+        parts: [{ text: m.text }]
+      }));
+      formattedHistory.pop();
+
+      const chat = model.startChat({ history: formattedHistory });
+      let result = await chat.sendMessage(userMessage);
+      let response = result.response;
+
+      const calls = response.functionCalls();
+      if (calls && calls.length > 0) {
+        const call = calls[0];
+        let toolResult = {};
+        if (call.name === "scrape_lawyers") {
+          toolResult = await executeScrape(call.args.location, call.args.limit);
+        } else if (call.name === "send_whatsapp") {
+          toolResult = await executeSendWhatsapp(call.args.phone, call.args.message);
+        } else if (call.name === "get_system_data") {
+          toolResult = { stats: db.stats, leads: db.leads.slice(0, 10) };
+        }
+
+        result = await chat.sendMessage([{
+          functionResponse: { name: call.name, response: toolResult }
+        }]);
+        response = result.response;
+      }
+
+      return response.text();
+    } catch (err) {
+      lastError = err;
+      console.warn(`Model ${modelName} failed, trying next candidate... Error: ${err.message}`);
+    }
+  }
+  throw lastError;
+}
+
 app.post("/api/agents/:id/chat", async (req, res) => {
   const { id } = req.params;
   const { message } = req.body;
@@ -157,79 +204,31 @@ app.post("/api/agents/:id/chat", async (req, res) => {
 
   if (!agent) return res.status(404).json({ error: "Agent not found" });
   if (!db.chats[id]) db.chats[id] = [];
-  
   db.chats[id].push({ sender: "user", text: message });
 
   if (!genAI) {
-    const errorMsg = "שגיאה קריטית: חסר מפתח GEMINI_API_KEY בשרת. אין לי אפשרות לחשוב. אנא הוסף את המפתח ל-Railway.";
+    const errorMsg = "שגיאה: חסר משתנה GEMINI_API_KEY ב-Railway. אנא הוסף את המפתח בלשונית Variables.";
     db.chats[id].push({ sender: "agent", text: errorMsg });
     return res.json({ reply: errorMsg });
   }
 
   db.agentsState[id].status = "processing";
-  db.agentsState[id].statusText = "חושב ומתכנן פעולה...";
+  db.agentsState[id].statusText = "מעבד פעולה...";
   broadcastUpdate();
 
   try {
-    const dynamicSystemPrompt = `${agent.systemPrompt}\n\nזיכרון מערכת משותף כרגע:\n- סה"כ לידים במאגר: ${db.leads.length}\n- סה"כ הודעות שנשלחו: ${db.stats.messagesSent}\nהפעל את הכלים שלך רק מתי שצריך. לעולם אל תשקר שעשית משהו אם לא קראת לפונקציה שלו!`;
+    const dynamicSystem = `${agent.systemPrompt}\n\nנתוני מערכת בזמן אמת:\n- סה"כ לידים במאגר: ${db.leads.length}\n- סה"כ הודעות שנשלחו: ${db.stats.messagesSent}\nענה בעברית רהוטה ומקצועית בלבד.`;
+    const finalReply = await callGeminiModel(dynamicSystem, message, db.chats[id]);
 
-    const model = genAI.getGenerativeModel({
-      model: "gemini-1.5-flash",
-      tools: [agentTools],
-      systemInstruction: dynamicSystemPrompt
-    });
-
-    const history = db.chats[id].filter(m => m.sender !== "system").map(m => ({
-      role: m.sender === "user" ? "user" : "model",
-      parts: [{ text: m.text }]
-    }));
-
-    // Remove the very last user message because sendMessage takes it separately
-    history.pop();
-    
-    const chat = model.startChat({ history });
-    
-    let result = await chat.sendMessage(message);
-    let response = result.response;
-
-    // Check if the AI decided to use a tool (Apify / WhatsApp)
-    const calls = response.functionCalls();
-    if (calls && calls.length > 0) {
-      const call = calls[0];
-      let toolResult = {};
-
-      db.agentsState[id].statusText = `מפעיל את ${call.name}...`;
-      broadcastUpdate();
-
-      if (call.name === "scrape_lawyers") {
-        toolResult = await executeScrape(call.args.location, call.args.limit);
-      } else if (call.name === "send_whatsapp") {
-        toolResult = await executeSendWhatsapp(call.args.phone, call.args.message);
-      } else if (call.name === "get_system_data") {
-        toolResult = { stats: db.stats, leads: db.leads.slice(0, 10) }; // send up to 10 leads as sample
-      }
-
-      // Return the real results from the code back to Gemini's brain
-      result = await chat.sendMessage([{
-        functionResponse: {
-          name: call.name,
-          response: toolResult
-        }
-      }]);
-      response = result.response;
-    }
-
-    const finalReply = response.text();
     db.chats[id].push({ sender: "agent", text: finalReply });
     db.agentsState[id].status = "active";
     db.agentsState[id].statusText = "המשימה הושלמה";
     broadcastUpdate();
 
     res.json({ reply: finalReply });
-
   } catch (err) {
-    console.error(err);
-    const errorMsg = "שגיאת מערכת בזמן הפעלת המודל האמיתי: " + err.message;
+    console.error("Agent chat error:", err);
+    const errorMsg = "שגיאת תקשורת עם המודל: " + err.message;
     db.chats[id].push({ sender: "agent", text: errorMsg });
     db.agentsState[id].status = "active";
     db.agentsState[id].statusText = "שגיאה";
@@ -238,7 +237,6 @@ app.post("/api/agents/:id/chat", async (req, res) => {
   }
 });
 
-// Real webhook receiver
 app.post("/api/webhooks/green-api", async (req, res) => {
   const body = req.body;
   if (body?.typeWebhook === "incomingMessageReceived") {
@@ -247,7 +245,6 @@ app.post("/api/webhooks/green-api", async (req, res) => {
     if (text && phone) {
       db.activityFeed.unshift({ id: Date.now(), time: new Date().toLocaleTimeString('he-IL', {hour: '2-digit', minute:'2-digit'}), title: "הודעה נכנסת", desc: `${phone}: "${text}"`, tag: "WhatsApp", type: "success" });
       broadcastUpdate();
-      // SDR agent can process this asynchronously here if needed
     }
   }
   res.status(200).send("OK");
@@ -255,4 +252,4 @@ app.post("/api/webhooks/green-api", async (req, res) => {
 
 app.get("*", (req, res) => res.sendFile(path.join(__dirname, "public", "index.html")));
 const PORT = process.env.PORT || 8787;
-app.listen(PORT, "0.0.0.0", () => console.log(`🚀 Real Agent Hub running on port ${PORT}`));
+app.listen(PORT, "0.0.0.0", () => console.log(`🚀 Live Server running on port ${PORT}`));
