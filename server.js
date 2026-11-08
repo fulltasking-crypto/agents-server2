@@ -22,6 +22,7 @@ if (geminiApiKey) {
   genAI = new GoogleGenerativeAI(geminiApiKey);
 }
 
+// CRM Database in memory with persistent fields
 const db = {
   stats: { leadsCollected: 0, messagesSent: 0, responseRate: 0, callsBooked: 0 },
   agentsState: {
@@ -52,13 +53,39 @@ app.get("/api/events", (req, res) => {
   req.on("close", () => { sseClients = sseClients.filter(c => c.id !== clientId); });
 });
 
-app.get("/api/state", (req, res) => res.json({ stats: db.stats, agentsState: db.agentsState, activityFeed: db.activityFeed, chats: db.chats }));
+app.get("/api/state", (req, res) => res.json({ stats: db.stats, agentsState: db.agentsState, activityFeed: db.activityFeed, chats: db.chats, leads: db.leads }));
+
+// CRM Export Endpoint - CSV compatible with Google Sheets & Excel
+app.get("/api/crm/export", (req, res) => {
+  let csv = "\uFEFFשם המשרד,מספר טלפון,עיר,סטטוס,תאריך הוספה\n";
+  for (const lead of db.leads) {
+    csv += `"${lead.name}","${lead.phone}","${lead.city}","${lead.status || 'חדש'}","${lead.date || new Date().toLocaleDateString('he-IL')}"\n`;
+  }
+  res.setHeader("Content-Type", "text/csv; charset=utf-8");
+  res.setHeader("Content-Disposition", "attachment; filename=leads_crm.csv");
+  res.send(csv);
+});
+
+// Sync to user's Google Sheet Webhook if GOOGLE_SHEET_WEBHOOK is set
+async function syncLeadToGoogleSheet(lead) {
+  const webhookUrl = process.env.GOOGLE_SHEET_WEBHOOK;
+  if (!webhookUrl) return;
+  try {
+    await fetch(webhookUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(lead)
+    });
+  } catch(e) {
+    console.error("Sheet sync error:", e);
+  }
+}
 
 const agentTools = {
   functionDeclarations: [
     {
       name: "scrape_lawyers",
-      description: "סריקת משרדי עורכי דין לחדלות פירעון בישראל לפי עיר",
+      description: "סריקת משרדי עורכי דין לחדלות פירעון בישראל והזנתם ל-CRM",
       parameters: {
         type: "OBJECT",
         properties: {
@@ -70,7 +97,7 @@ const agentTools = {
     },
     {
       name: "send_whatsapp",
-      description: "שליחת הודעת וואטסאפ אמיתית למספר טלפון",
+      description: "שליחת הודעת וואטסאפ אמיתית למספר טלפון ועדכון סטטוס הליד ב-CRM",
       parameters: {
         type: "OBJECT",
         properties: {
@@ -81,8 +108,8 @@ const agentTools = {
       }
     },
     {
-      name: "get_system_data",
-      description: "קבלת מצב המערכת העדכני: כמות לידים, סטטוסים ושיחות",
+      name: "get_crm_status",
+      description: "קבלת רשימת הלידים המלאה והסטטוסים מתוך ה-CRM",
       parameters: { type: "OBJECT", properties: {} }
     }
   ]
@@ -106,14 +133,22 @@ async function executeScrape(location, limit = 10) {
       for (const item of items) {
         const rawPhone = (item.phone || "").replace(/[^0-9]/g, "");
         if (rawPhone.startsWith("05") || rawPhone.startsWith("9725")) {
-          db.leads.push({ name: item.title, phone: rawPhone, city: location, status: "חדש" });
+          const newLead = { 
+            name: item.title, 
+            phone: rawPhone, 
+            city: location, 
+            status: "חדש במאגר", 
+            date: new Date().toLocaleDateString('he-IL') 
+          };
+          db.leads.push(newLead);
+          syncLeadToGoogleSheet(newLead);
           added.push(item.title);
           count++;
         }
       }
     }
     db.stats.leadsCollected = db.leads.length;
-    db.activityFeed.unshift({ id: Date.now(), time: new Date().toLocaleTimeString('he-IL', {hour: '2-digit', minute:'2-digit'}), title: `Apify סיים סריקה ב${location}`, desc: `נוספו ${count} לידים עם נייד`, tag: "Apify", type: "success" });
+    db.activityFeed.unshift({ id: Date.now(), time: new Date().toLocaleTimeString('he-IL', {hour: '2-digit', minute:'2-digit'}), title: `Apify סיים סריקה ב${location}`, desc: `נוספו ${count} לידים לגיליון ה-CRM`, tag: "Apify", type: "success" });
     broadcastUpdate();
     return { success: true, count, names: added.slice(0, 5) };
   } catch (err) {
@@ -137,7 +172,13 @@ async function executeSendWhatsapp(phone, message) {
     const data = await res.json();
     if (data.idMessage) {
       db.stats.messagesSent++;
-      db.activityFeed.unshift({ id: Date.now(), time: new Date().toLocaleTimeString('he-IL', {hour: '2-digit', minute:'2-digit'}), title: "הודעה יצאה בוואטסאפ", desc: `נשלח ל-${phone}`, tag: "WhatsApp", type: "info" });
+      // Update status in CRM
+      const lead = db.leads.find(l => l.phone.includes(clean) || clean.includes(l.phone));
+      if (lead) {
+        lead.status = "נשלחה פנייה ראשונה";
+        syncLeadToGoogleSheet(lead);
+      }
+      db.activityFeed.unshift({ id: Date.now(), time: new Date().toLocaleTimeString('he-IL', {hour: '2-digit', minute:'2-digit'}), title: "הודעת וואטסאפ נשלחה", desc: `נשלח ל-${phone}`, tag: "WhatsApp", type: "info" });
       broadcastUpdate();
       return { success: true, idMessage: data.idMessage };
     }
@@ -147,54 +188,43 @@ async function executeSendWhatsapp(phone, message) {
   }
 }
 
-// Auto-fallback model selection if a specific model identifier returns 404
 async function callGeminiModel(systemPrompt, userMessage, history) {
-  const candidateModels = ["gemini-1.5-flash-latest", "gemini-1.5-flash", "gemini-1.5-pro-latest", "gemini-pro"];
-  let lastError = null;
+  // Use gemini-1.5-flash as standard
+  const model = genAI.getGenerativeModel({
+    model: "gemini-1.5-flash",
+    tools: [agentTools],
+    systemInstruction: systemPrompt
+  });
 
-  for (const modelName of candidateModels) {
-    try {
-      const model = genAI.getGenerativeModel({
-        model: modelName,
-        tools: [agentTools],
-        systemInstruction: systemPrompt
-      });
+  const formattedHistory = history.filter(m => m.sender !== "system").map(m => ({
+    role: m.sender === "user" ? "user" : "model",
+    parts: [{ text: m.text }]
+  }));
+  formattedHistory.pop();
 
-      const formattedHistory = history.filter(m => m.sender !== "system").map(m => ({
-        role: m.sender === "user" ? "user" : "model",
-        parts: [{ text: m.text }]
-      }));
-      formattedHistory.pop();
+  const chat = model.startChat({ history: formattedHistory });
+  let result = await chat.sendMessage(userMessage);
+  let response = result.response;
 
-      const chat = model.startChat({ history: formattedHistory });
-      let result = await chat.sendMessage(userMessage);
-      let response = result.response;
-
-      const calls = response.functionCalls();
-      if (calls && calls.length > 0) {
-        const call = calls[0];
-        let toolResult = {};
-        if (call.name === "scrape_lawyers") {
-          toolResult = await executeScrape(call.args.location, call.args.limit);
-        } else if (call.name === "send_whatsapp") {
-          toolResult = await executeSendWhatsapp(call.args.phone, call.args.message);
-        } else if (call.name === "get_system_data") {
-          toolResult = { stats: db.stats, leads: db.leads.slice(0, 10) };
-        }
-
-        result = await chat.sendMessage([{
-          functionResponse: { name: call.name, response: toolResult }
-        }]);
-        response = result.response;
-      }
-
-      return response.text();
-    } catch (err) {
-      lastError = err;
-      console.warn(`Model ${modelName} failed, trying next candidate... Error: ${err.message}`);
+  const calls = response.functionCalls();
+  if (calls && calls.length > 0) {
+    const call = calls[0];
+    let toolResult = {};
+    if (call.name === "scrape_lawyers") {
+      toolResult = await executeScrape(call.args.location, call.args.limit);
+    } else if (call.name === "send_whatsapp") {
+      toolResult = await executeSendWhatsapp(call.args.phone, call.args.message);
+    } else if (call.name === "get_crm_status") {
+      toolResult = { stats: db.stats, totalLeads: db.leads.length, sample: db.leads.slice(0, 5) };
     }
+
+    result = await chat.sendMessage([{
+      functionResponse: { name: call.name, response: toolResult }
+    }]);
+    response = result.response;
   }
-  throw lastError;
+
+  return response.text();
 }
 
 app.post("/api/agents/:id/chat", async (req, res) => {
@@ -206,18 +236,18 @@ app.post("/api/agents/:id/chat", async (req, res) => {
   if (!db.chats[id]) db.chats[id] = [];
   db.chats[id].push({ sender: "user", text: message });
 
-  if (!genAI) {
-    const errorMsg = "שגיאה: חסר משתנה GEMINI_API_KEY ב-Railway. אנא הוסף את המפתח בלשונית Variables.";
+  if (!geminiApiKey) {
+    const errorMsg = "שגיאה: חסר משתנה GEMINI_API_KEY ב-Railway.";
     db.chats[id].push({ sender: "agent", text: errorMsg });
     return res.json({ reply: errorMsg });
   }
 
   db.agentsState[id].status = "processing";
-  db.agentsState[id].statusText = "מעבד פעולה...";
+  db.agentsState[id].statusText = "חושב ומתכנן...";
   broadcastUpdate();
 
   try {
-    const dynamicSystem = `${agent.systemPrompt}\n\nנתוני מערכת בזמן אמת:\n- סה"כ לידים במאגר: ${db.leads.length}\n- סה"כ הודעות שנשלחו: ${db.stats.messagesSent}\nענה בעברית רהוטה ומקצועית בלבד.`;
+    const dynamicSystem = `${agent.systemPrompt}\n\nמצב ה-CRM כרגע:\n- סה"כ לידים במאגר: ${db.leads.length}\n- הודעות שנשלחו: ${db.stats.messagesSent}\nענה בעברית רהוטה ומקצועית בלבד.`;
     const finalReply = await callGeminiModel(dynamicSystem, message, db.chats[id]);
 
     db.chats[id].push({ sender: "agent", text: finalReply });
@@ -228,7 +258,10 @@ app.post("/api/agents/:id/chat", async (req, res) => {
     res.json({ reply: finalReply });
   } catch (err) {
     console.error("Agent chat error:", err);
-    const errorMsg = "שגיאת תקשורת עם המודל: " + err.message;
+    let errorMsg = err.message;
+    if (errorMsg.includes("404") || errorMsg.includes("not found")) {
+      errorMsg = "⚠️ מפתח ה-API של Google דורש הפעלה: אנא היכנס לקישור הבא ולחץ 'Enable' (הפעל) כדי לאפשר ל-Gemini לרוץ בפרויקט:\nhttps://console.cloud.google.com/apis/library/generativelanguage.googleapis.com";
+    }
     db.chats[id].push({ sender: "agent", text: errorMsg });
     db.agentsState[id].status = "active";
     db.agentsState[id].statusText = "שגיאה";
