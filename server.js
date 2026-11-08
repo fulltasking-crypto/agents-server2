@@ -3,7 +3,7 @@ import cors from "cors";
 import dotenv from "dotenv";
 import path from "path";
 import { fileURLToPath } from "url";
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 import { AGENTS } from "./agents.js";
 
 dotenv.config();
@@ -16,12 +16,11 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
 
-// Gemini Client initialization
 const geminiApiKey = process.env.GEMINI_API_KEY || process.env.API_KEY || "";
-let ai = null;
+let genAI = null;
 if (geminiApiKey) {
   try {
-    ai = new GoogleGenAI({ apiKey: geminiApiKey });
+    genAI = new GoogleGenerativeAI(geminiApiKey);
   } catch (err) {
     console.error("Gemini init error:", err);
   }
@@ -41,7 +40,7 @@ const db = {
     analytics: { status: "active", statusText: "מחובר (Gemini)", lastAction: "דוח עדכני מוכן" }
   },
   activityFeed: [
-    { id: 1, time: "12:12", title: "מנוע שודרג ל-Gemini", desc: "סוכני ה-AI פועלים על מודל Gemini", tag: "Gemini", type: "success" },
+    { id: 1, time: "12:15", title: "מערכת הופעלה בהצלחה", desc: "סוכני ה-AI מחוברים למודל Gemini", tag: "Gemini", type: "success" },
     { id: 2, time: "11:31", title: "סריקת Apify הסתיימה", desc: "81 לידים נוספו למאגר", tag: "Apify", type: "success" },
     { id: 3, time: "11:30", title: "שיחה חדשה תואמה", desc: "עו״ד מזרחי (חדלות פירעון)", tag: "WhatsApp", type: "success" }
   ],
@@ -98,32 +97,20 @@ function getSmartFallbackReply(agentId, userText) {
   return `קיבלתי: "${userText}". הפעולה עודכנה במערכת.`;
 }
 
-// Call Gemini API
-async function askGemini(agent, userMessage, chatHistory) {
-  if (!ai && !geminiApiKey) {
-    return null;
-  }
-
+async function askGemini(agent, userMessage) {
+  if (!genAI && !geminiApiKey) return null;
   try {
-    const systemPrompt = `${agent.systemPrompt}\nענה תמיד בעברית מקצועית, מדויקת ורהוטה. אתה חלק מצוות סוכני AI לניהול לידים לעורכי דין לחדלות פירעון. שמור על תשובות ממוקדות ותכליתיות.`;
-    
-    // Using official Google Gen AI SDK
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: userMessage,
-      config: {
-        systemInstruction: systemPrompt,
-        maxOutputTokens: 800,
-        temperature: 0.7
-      }
+    const model = genAI.getGenerativeModel({
+      model: "gemini-1.5-flash",
+      systemInstruction: `${agent.systemPrompt}\nענה תמיד בעברית מקצועית וקולעת.`
     });
-
-    return response.text;
+    const result = await model.generateContent(userMessage);
+    const response = await result.response;
+    return response.text();
   } catch (err) {
     console.error("Gemini API call failed:", err.message);
-    // If SDK fails, fallback to direct REST call
     try {
-      const restUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiApiKey}`;
+      const restUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiApiKey}`;
       const restRes = await fetch(restUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -135,7 +122,6 @@ async function askGemini(agent, userMessage, chatHistory) {
       const restData = await restRes.json();
       return restData?.candidates?.[0]?.content?.parts?.[0]?.text || null;
     } catch (e) {
-      console.error("Direct fetch also failed:", e.message);
       return null;
     }
   }
@@ -152,15 +138,13 @@ app.post("/api/agents/:id/chat", async (req, res) => {
   db.chats[id].push({ sender: "user", text: message });
 
   db.agentsState[id].status = "processing";
-  db.agentsState[id].statusText = "Gemini חושב...";
+  db.agentsState[id].statusText = "מעבד פקודה...";
   broadcastUpdate();
 
   let finalReply = null;
-
   if (geminiApiKey) {
-    finalReply = await askGemini(agent, message, db.chats[id]);
+    finalReply = await askGemini(agent, message);
   }
-
   if (!finalReply) {
     finalReply = getSmartFallbackReply(id, message);
   }
@@ -200,7 +184,6 @@ app.post("/api/simulate/:type", (req, res) => {
   res.json({ success: true });
 });
 
-// Green-API incoming webhook
 app.post("/api/webhooks/green-api", async (req, res) => {
   const body = req.body;
   if (body?.typeWebhook === "incomingMessageReceived") {
@@ -218,14 +201,14 @@ app.post("/api/webhooks/green-api", async (req, res) => {
       });
       broadcastUpdate();
 
-      if (ai) {
+      if (genAI) {
         try {
-          const aiResponse = await ai.models.generateContent({
-            model: "gemini-2.5-flash",
-            contents: `עורך הדין כתב בוואטסאפ: "${text}". נסחי מענה קצר לתיאום שיחה טלפונית על חבילת הלידים (5,500 ₪).`,
-            config: { systemInstruction: AGENTS.sdr.systemPrompt }
+          const model = genAI.getGenerativeModel({
+            model: "gemini-1.5-flash",
+            systemInstruction: AGENTS.sdr.systemPrompt
           });
-          const replyText = aiResponse.text;
+          const result = await model.generateContent(`עורך הדין כתב בוואטסאפ: "${text}". נסחי מענה קצר לתיאום שיחה טלפונית על חבילת הלידים (5,500 ₪).`);
+          const replyText = (await result.response).text();
 
           const id = process.env.GREEN_API_ID;
           const token = process.env.GREEN_API_TOKEN;
@@ -250,4 +233,4 @@ app.get("*", (req, res) => {
 });
 
 const PORT = process.env.PORT || 8787;
-app.listen(PORT, "0.0.0.0", () => console.log(`🚀 Live Gemini Agent Hub running on port ${PORT}`));
+app.listen(PORT, "0.0.0.0", () => console.log(`🚀 Live Agent Hub running on port ${PORT}`));
