@@ -5,150 +5,336 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>חדר פיקוד סוכני AI | חדלות פירעון</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <link href="https://fonts.googleapis.com/css2?family=Assistant:wght@300;400;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Assistant:wght@300;400;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
   <style>
     body { font-family: 'Assistant', sans-serif; background-color: #0b0f19; }
-    .pulse-ring {
-      animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+    .mono { font-family: 'JetBrains+Mono', monospace; }
+    .pulse-green { animation: pulseGreen 2s infinite; }
+    .pulse-yellow { animation: pulseYellow 1.5s infinite; }
+    @keyframes pulseGreen {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
+      70% { box-shadow: 0 0 0 10px rgba(16, 185, 129, 0); }
     }
-    @keyframes pulse {
-      0%, 100% { opacity: 1; transform: scale(1); }
-      50% { opacity: .5; transform: scale(1.08); }
+    @keyframes pulseYellow {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(234, 179, 8, 0.7); }
+      70% { box-shadow: 0 0 0 10px rgba(234, 179, 8, 0); }
     }
+    .custom-scroll::-webkit-scrollbar { width: 5px; }
+    .custom-scroll::-webkit-scrollbar-track { background: transparent; }
+    .custom-scroll::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 4px; }
   </style>
 </head>
-<body class="text-slate-100 min-h-screen flex flex-col justify-between select-none">
+<body class="text-slate-100 min-h-screen flex flex-col bg-[#080c14] overflow-x-hidden">
 
-  <!-- Top Header / Stats Bar -->
-  <header class="border-b border-slate-800 bg-slate-900/60 backdrop-blur-md px-8 py-4">
+  <!-- Top Real-time Metric Bar -->
+  <header class="border-b border-slate-800/80 bg-slate-900/40 backdrop-blur-md px-6 py-3.5 sticky top-0 z-30">
     <div class="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-4">
       <div class="flex items-center gap-3">
-        <div class="w-3 h-3 rounded-full bg-emerald-500 animate-ping"></div>
-        <h1 class="text-xl font-bold tracking-wide">חדר הפיקוד של סוכני ה-AI שלך</h1>
+        <div class="w-2.5 h-2.5 rounded-full bg-emerald-400 pulse-green"></div>
+        <span class="font-extrabold tracking-wide text-white text-base">מרכז הפיקוד של סוכני ה-AI שלך</span>
+        <span class="text-xs bg-emerald-950/80 text-emerald-400 border border-emerald-500/30 px-2.5 py-0.5 rounded-full">מחובר ישירות לשרת</span>
       </div>
 
-      <!-- Stats Grid -->
-      <div class="flex items-center gap-8 text-center bg-slate-800/80 px-6 py-2 rounded-2xl border border-slate-700">
+      <!-- Real-time Metrics -->
+      <div class="flex items-center gap-6 sm:gap-10 text-center bg-slate-900/90 px-6 py-2 rounded-2xl border border-slate-800 shadow-xl">
         <div>
-          <div class="text-xs text-slate-400">לידים שנאספו</div>
-          <div id="stat-leads" class="text-lg font-bold text-emerald-400">1,244</div>
+          <div class="text-[11px] text-slate-400 font-medium">לידים שנאספו</div>
+          <div id="stat-leads" class="text-lg font-bold text-white tracking-wide">1,244</div>
         </div>
-        <div class="h-8 w-px bg-slate-700"></div>
+        <div class="h-6 w-px bg-slate-800"></div>
         <div>
-          <div class="text-xs text-slate-400">הודעות שנשלחו</div>
-          <div id="stat-sent" class="text-lg font-bold text-blue-400">236</div>
+          <div class="text-[11px] text-slate-400 font-medium">הודעות שנשלחו</div>
+          <div id="stat-sent" class="text-lg font-bold text-white tracking-wide">236</div>
         </div>
-        <div class="h-8 w-px bg-slate-700"></div>
+        <div class="h-6 w-px bg-slate-800"></div>
         <div>
-          <div class="text-xs text-slate-400">אחוז מענה</div>
-          <div class="text-lg font-bold text-amber-400">14%</div>
+          <div class="text-[11px] text-slate-400 font-medium">אחוז מענה (34)</div>
+          <div id="stat-rate" class="text-lg font-bold text-amber-400 tracking-wide">14%</div>
         </div>
-        <div class="h-8 w-px bg-slate-700"></div>
+        <div class="h-6 w-px bg-slate-800"></div>
         <div>
-          <div class="text-xs text-slate-400">שיחות שנקבעו</div>
-          <div id="stat-calls" class="text-lg font-bold text-purple-400">10</div>
+          <div class="text-[11px] text-slate-400 font-medium">שיחות שנקבעו</div>
+          <div id="stat-calls" class="text-lg font-bold text-emerald-400 tracking-wide">10</div>
         </div>
       </div>
     </div>
   </header>
 
-  <!-- Center Agents Huddle -->
-  <main class="flex-1 flex items-center justify-center p-6 relative">
+  <!-- Main Body Content: 2-Column Split (Left/Center: Huddle, Right: Webhooks & Live Feed) -->
+  <div class="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
     
-    <!-- Outer Orbit Ring -->
-    <div class="relative w-[500px] h-[500px] rounded-full border border-slate-800/80 flex items-center justify-center">
+    <!-- Left / Center: Interactive Circular Agent Room (8 Cols) -->
+    <div class="lg:col-span-8 bg-slate-900/20 border border-slate-800/80 rounded-3xl p-6 min-h-[580px] flex flex-col items-center justify-center relative overflow-hidden">
+      <div class="absolute top-4 right-4 text-xs font-semibold text-slate-500 uppercase tracking-widest">
+        חדר הצוות • 4 סוכנים פעילים
+      </div>
+
+      <!-- Orbit Ring -->
+      <div class="relative w-[340px] sm:w-[440px] h-[340px] sm:h-[440px] rounded-full border border-dashed border-slate-700/60 flex items-center justify-center">
+        
+        <!-- Center Hub -->
+        <div class="w-24 sm:w-28 h-24 sm:h-28 rounded-full bg-slate-900 border border-indigo-500/40 flex flex-col items-center justify-center shadow-2xl shadow-indigo-500/20 text-center z-10">
+          <svg class="w-6 h-6 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+          <span class="text-xs font-bold text-slate-200 mt-1">חדר הצוות</span>
+          <span class="text-[10px] text-emerald-400 font-mono">מצב אוטונומי</span>
+        </div>
+
+        <!-- 1. דנה - Top -->
+        <div onclick="selectAgent('scraper')" class="absolute -top-7 flex flex-col items-center cursor-pointer group">
+          <div class="relative w-16 sm:w-20 h-16 sm:h-20 rounded-full bg-slate-800 border-2 border-emerald-500/80 p-0.5 group-hover:scale-110 transition-transform">
+            <img src="https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150" class="w-full h-full object-cover rounded-full" />
+            <span id="dot-scraper" class="absolute bottom-0 right-0 w-3.5 h-3.5 rounded-full bg-emerald-500 border-2 border-slate-900 pulse-green"></span>
+          </div>
+          <span class="mt-2 text-sm font-bold text-white group-hover:text-emerald-400">דנה</span>
+          <span class="text-[11px] text-slate-400">סוכנת איסוף לידים</span>
+          <span id="status-scraper" class="text-[9px] text-emerald-400/90 font-mono">נאספו 12 לידים</span>
+        </div>
+
+        <!-- 2. יובל - Right -->
+        <div onclick="selectAgent('copywriter')" class="absolute -right-7 flex flex-col items-center cursor-pointer group">
+          <div class="relative w-16 sm:w-20 h-16 sm:h-20 rounded-full bg-slate-800 border-2 border-indigo-500/80 p-0.5 group-hover:scale-110 transition-transform">
+            <img src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150" class="w-full h-full object-cover rounded-full" />
+            <span id="dot-copywriter" class="absolute bottom-0 right-0 w-3.5 h-3.5 rounded-full bg-emerald-500 border-2 border-slate-900 pulse-green"></span>
+          </div>
+          <span class="mt-2 text-sm font-bold text-white group-hover:text-indigo-400">יובל</span>
+          <span class="text-[11px] text-slate-400">סוכן קופירייטינג</span>
+          <span id="status-copywriter" class="text-[9px] text-indigo-400/90 font-mono">הפניות מוכנות</span>
+        </div>
+
+        <!-- 3. מאיה - Bottom -->
+        <div onclick="selectAgent('sdr')" class="absolute -bottom-7 flex flex-col items-center cursor-pointer group">
+          <div class="relative w-16 sm:w-20 h-16 sm:h-20 rounded-full bg-slate-800 border-2 border-purple-500/80 p-0.5 group-hover:scale-110 transition-transform">
+            <img src="https://images.unsplash.com/photo-1580489944761-15a19d654956?w=150" class="w-full h-full object-cover rounded-full" />
+            <span id="dot-sdr" class="absolute bottom-0 right-0 w-3.5 h-3.5 rounded-full bg-emerald-500 border-2 border-slate-900 pulse-green"></span>
+          </div>
+          <span class="mt-2 text-sm font-bold text-white group-hover:text-purple-400">מאיה</span>
+          <span class="text-[11px] text-slate-400">סוכנת SDR בוואטסאפ</span>
+          <span id="status-sdr" class="text-[9px] text-purple-400/90 font-mono">בהמתנה למענה</span>
+        </div>
+
+        <!-- 4. אורי - Left -->
+        <div onclick="selectAgent('analytics')" class="absolute -left-7 flex flex-col items-center cursor-pointer group">
+          <div class="relative w-16 sm:w-20 h-16 sm:h-20 rounded-full bg-slate-800 border-2 border-amber-500/80 p-0.5 group-hover:scale-110 transition-transform">
+            <img src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150" class="w-full h-full object-cover rounded-full" />
+            <span id="dot-analytics" class="absolute bottom-0 right-0 w-3.5 h-3.5 rounded-full bg-emerald-500 border-2 border-slate-900 pulse-green"></span>
+          </div>
+          <span class="mt-2 text-sm font-bold text-white group-hover:text-amber-400">אורי</span>
+          <span class="text-[11px] text-slate-400">סוכן אנליטיקה ו-COO</span>
+          <span id="status-analytics" class="text-[9px] text-amber-400/90 font-mono">במנוחה</span>
+        </div>
+
+      </div>
+
+      <div class="mt-10 text-xs text-slate-400 bg-slate-950/60 px-4 py-1.5 rounded-full border border-slate-800">
+        💡 לחץ על כל סוכן כדי לפתוח את לוח השיחה, הנתונים וההוראות שלו
+      </div>
+    </div>
+
+    <!-- Right Column: Webhooks & Live Activity Feed (4 Cols) -->
+    <div class="lg:col-span-4 space-y-5">
       
-      <!-- Center Hub -->
-      <div class="w-28 h-28 rounded-full bg-gradient-to-tr from-slate-900 to-indigo-950 border border-indigo-500/30 flex flex-col items-center justify-center shadow-2xl shadow-indigo-900/40 text-center">
-        <span class="text-2xl">⚡</span>
-        <span class="text-xs font-semibold text-slate-300 mt-1">חדר הצוות</span>
-        <span class="text-[10px] text-emerald-400 font-mono">מחובר לייב</span>
+      <!-- Webhooks Card -->
+      <div class="bg-slate-900/60 border border-slate-800 rounded-3xl p-5 shadow-lg">
+        <div class="flex items-center justify-between mb-3">
+          <h3 class="font-bold text-sm text-white flex items-center gap-2">
+            <span>🔗</span> חיבורים ו-Webhooks
+          </h3>
+          <span class="text-[10px] bg-indigo-950 text-indigo-300 px-2 py-0.5 rounded border border-indigo-700/40">לייב</span>
+        </div>
+        <p class="text-xs text-slate-400 mb-4 leading-relaxed">
+          נקודות הקצה הפעילות לקבלת נתוני סריקה והודעות וואטסאפ:
+        </p>
+
+        <div class="space-y-3 text-xs">
+          <!-- Apify Webhook -->
+          <div class="bg-slate-950/70 p-3 rounded-2xl border border-slate-800 flex items-center justify-between">
+            <div>
+              <div class="font-semibold text-slate-200">Apify (סריקה)</div>
+              <div class="text-[10px] text-slate-400 mono mt-0.5">POST /api/webhooks/apify</div>
+            </div>
+            <button onclick="triggerSimulate('apify')" class="bg-slate-800 hover:bg-slate-700 text-xs text-slate-200 px-3 py-1.5 rounded-xl border border-slate-700 transition">
+              ⚡ הפעל
+            </button>
+          </div>
+
+          <!-- Green-API Webhook -->
+          <div class="bg-slate-950/70 p-3 rounded-2xl border border-slate-800 flex items-center justify-between">
+            <div>
+              <div class="font-semibold text-slate-200">Green-API (וואטסאפ)</div>
+              <div class="text-[10px] text-slate-400 mono mt-0.5">POST /api/webhooks/green-api</div>
+            </div>
+            <button onclick="triggerSimulate('whatsapp')" class="bg-slate-800 hover:bg-slate-700 text-xs text-slate-200 px-3 py-1.5 rounded-xl border border-slate-700 transition">
+              ⚡ הפעל
+            </button>
+          </div>
+        </div>
       </div>
 
-      <!-- Agent 1: דנה (Top) -->
-      <div onclick="openChat('scraper', 'דנה - סוכנת איסוף לידים', 'סריקת גוגל מפס ואימות ניידים 05X')"
-           class="absolute -top-6 flex flex-col items-center cursor-pointer group hover:scale-105 transition-all">
-        <div class="relative w-20 h-20 rounded-full bg-slate-800 border-2 border-emerald-500 p-1 shadow-lg shadow-emerald-950/50">
-          <img src="https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150" class="w-full h-full object-cover rounded-full" />
-          <span class="absolute bottom-0 right-0 w-4 h-4 bg-emerald-500 rounded-full border-2 border-slate-900 pulse-ring"></span>
+      <!-- Live Activity Feed Card -->
+      <div class="bg-slate-900/60 border border-slate-800 rounded-3xl p-5 shadow-lg flex flex-col h-[350px]">
+        <div class="flex items-center justify-between mb-3 border-b border-slate-800 pb-3">
+          <h3 class="font-bold text-sm text-white flex items-center gap-2">
+            <span class="w-2 h-2 rounded-full bg-emerald-400 pulse-green"></span>
+            פעילות חיה
+          </h3>
+          <span class="text-[10px] text-slate-400">מתעדכן בזמן אמת</span>
         </div>
-        <span class="mt-2 text-sm font-bold text-white group-hover:text-emerald-400">דנה</span>
-        <span class="text-[11px] text-slate-400">סוכנת איסוף לידים</span>
-      </div>
 
-      <!-- Agent 2: יובל (Right) -->
-      <div onclick="openChat('copywriter', 'יובל - סוכן קופירייטינג', 'ניסוח פניות מותאמות אישית לעו״ד')"
-           class="absolute -right-6 flex flex-col items-center cursor-pointer group hover:scale-105 transition-all">
-        <div class="relative w-20 h-20 rounded-full bg-slate-800 border-2 border-blue-500 p-1 shadow-lg shadow-blue-950/50">
-          <img src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150" class="w-full h-full object-cover rounded-full" />
-          <span class="absolute bottom-0 right-0 w-4 h-4 bg-emerald-500 rounded-full border-2 border-slate-900 pulse-ring"></span>
+        <div id="activity-feed" class="flex-1 overflow-y-auto space-y-3 custom-scroll pr-1 text-xs">
+          <!-- Feed items inserted here dynamically -->
         </div>
-        <span class="mt-2 text-sm font-bold text-white group-hover:text-blue-400">יובל</span>
-        <span class="text-[11px] text-slate-400">סוכן קופירייטינג</span>
-      </div>
-
-      <!-- Agent 3: מאיה (Bottom) -->
-      <div onclick="openChat('sdr', 'מאיה - סוכנת SDR בוואטסאפ', 'מענה לעו״ד ותיאום שיחות טלפוניות')"
-           class="absolute -bottom-6 flex flex-col items-center cursor-pointer group hover:scale-105 transition-all">
-        <div class="relative w-20 h-20 rounded-full bg-slate-800 border-2 border-purple-500 p-1 shadow-lg shadow-purple-950/50">
-          <img src="https://images.unsplash.com/photo-1580489944761-15a19d654956?w=150" class="w-full h-full object-cover rounded-full" />
-          <span class="absolute bottom-0 right-0 w-4 h-4 bg-emerald-500 rounded-full border-2 border-slate-900 pulse-ring"></span>
-        </div>
-        <span class="mt-2 text-sm font-bold text-white group-hover:text-purple-400">מאיה</span>
-        <span class="text-[11px] text-slate-400">סוכנת SDR בוואטסאפ</span>
-      </div>
-
-      <!-- Agent 4: אורי (Left) -->
-      <div onclick="openChat('analytics', 'אורי - מנהל תפעול ודוחות', 'ניתוח ביצועים, המרות ודוחות יומיים')"
-           class="absolute -left-6 flex flex-col items-center cursor-pointer group hover:scale-105 transition-all">
-        <div class="relative w-20 h-20 rounded-full bg-slate-800 border-2 border-amber-500 p-1 shadow-lg shadow-amber-950/50">
-          <img src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150" class="w-full h-full object-cover rounded-full" />
-          <span class="absolute bottom-0 right-0 w-4 h-4 bg-emerald-500 rounded-full border-2 border-slate-900 pulse-ring"></span>
-        </div>
-        <span class="mt-2 text-sm font-bold text-white group-hover:text-amber-400">אורי</span>
-        <span class="text-[11px] text-slate-400">מנהל תפעול ודוחות</span>
       </div>
 
     </div>
-  </main>
+  </div>
 
-  <!-- Slide-out Chat Drawer -->
-  <div id="chat-drawer" class="fixed inset-y-0 right-0 w-full sm:w-[460px] bg-slate-900 border-l border-slate-800 shadow-2xl flex flex-col transform translate-x-full transition-transform duration-300 z-50">
-    <!-- Header -->
-    <div class="p-5 border-b border-slate-800 flex items-center justify-between bg-slate-950/40">
-      <div>
-        <h3 id="chat-name" class="font-bold text-lg text-white">שם הסוכן</h3>
-        <p id="chat-role" class="text-xs text-slate-400">תפקיד</p>
+  <!-- Slide-Over Chat Drawer for Selected Agent -->
+  <div id="chat-drawer" class="fixed inset-y-0 right-0 w-full sm:w-[480px] bg-[#0c1222] border-l border-slate-800 shadow-2xl flex flex-col transform translate-x-full transition-transform duration-300 z-50">
+    
+    <!-- Drawer Header -->
+    <div class="p-5 border-b border-slate-800 flex items-center justify-between bg-slate-950/60">
+      <div class="flex items-center gap-3">
+        <img id="drawer-avatar" src="" class="w-10 h-10 rounded-full border border-slate-700 object-cover" />
+        <div>
+          <h3 id="drawer-name" class="font-bold text-white text-base">שם הסוכן</h3>
+          <p id="drawer-role" class="text-xs text-slate-400 font-medium">תפקיד</p>
+        </div>
       </div>
-      <button onclick="closeChat()" class="text-slate-400 hover:text-white p-2 text-xl">✕</button>
+      <button onclick="closeChat()" class="text-slate-400 hover:text-white p-1 text-2xl">✕</button>
     </div>
 
-    <!-- Messages Container -->
-    <div id="chat-messages" class="flex-1 overflow-y-auto p-4 space-y-3">
-      <div class="bg-slate-800/80 p-3 rounded-2xl rounded-tr-none text-sm text-slate-200">
-        היי! אני כאן לעזור לך. מה תרצה שנעשה עכשיו?
-      </div>
+    <!-- Quick Action Chips -->
+    <div id="quick-actions" class="px-5 py-3 border-b border-slate-800/80 bg-slate-900/40 flex items-center gap-2 overflow-x-auto text-xs whitespace-nowrap">
+      <!-- Injected per agent -->
     </div>
 
-    <!-- Chat Input -->
-    <div class="p-4 border-t border-slate-800 bg-slate-950/50">
-      <form onsubmit="sendMessage(event)" class="flex gap-2">
-        <input id="chat-input" type="text" placeholder="הקלד פקודה לסוכן..." 
-               class="flex-1 bg-slate-800 border border-slate-700 rounded-xl px-4 py-2 text-sm text-white focus:outline-none focus:border-indigo-500" />
-        <button type="submit" class="bg-indigo-600 hover:bg-indigo-500 text-white px-5 py-2 rounded-xl text-sm font-bold transition-all">
-          שלח
+    <!-- Chat Message Log -->
+    <div id="chat-messages" class="flex-1 overflow-y-auto p-5 space-y-4 custom-scroll text-sm">
+      <!-- Messages load here -->
+    </div>
+
+    <!-- Input Bar -->
+    <div class="p-4 border-t border-slate-800 bg-slate-950/80">
+      <form onsubmit="handleChatSubmit(event)" class="flex gap-2">
+        <input id="chat-input" type="text" placeholder="כתוב פקודה או שאלה לסוכן..." 
+               class="flex-1 bg-slate-900 border border-slate-700/80 rounded-2xl px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition" />
+        <button type="submit" class="bg-indigo-600 hover:bg-indigo-500 text-white font-bold px-5 py-2.5 rounded-2xl text-sm transition flex items-center gap-1.5 shadow-lg shadow-indigo-600/30">
+          <span>שלח</span>
         </button>
       </form>
     </div>
   </div>
 
   <script>
-    let currentAgent = 'scraper';
+    let activeAgent = 'scraper';
+    let appState = null;
 
-    function openChat(agentId, name, role) {
-      currentAgent = agentId;
-      document.getElementById('chat-name').innerText = name;
-      document.getElementById('chat-role').innerText = role;
+    const AGENT_CONFIGS = {
+      scraper: {
+        name: "דנה - סוכנת איסוף לידים",
+        role: "סריקת גוגל מפס וחילוץ ניידים 05X",
+        avatar: "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150",
+        quickActions: ["סרוק עיר חדשה", "בדוק מספרי 05X", "העבר לידים ליובל"]
+      },
+      copywriter: {
+        name: "יובל - סוכן קופירייטינג",
+        role: "ניסוח פניות מותאמות לעורכי דין לחדלות פירעון",
+        avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150",
+        quickActions: ["צור נוסח פנייה חדש", "שפר אחוז מענה", "פנייה למשרדים גדולים"]
+      },
+      sdr: {
+        name: "מאיה - סוכנת SDR בוואטסאפ",
+        role: "מענה אוטונומי, טיפול בהתנגדויות ותיאום שיחות",
+        avatar: "https://images.unsplash.com/photo-1580489944761-15a19d654956?w=150",
+        quickActions: ["בדוק צ'אטים פעילים", "שלח הודעת בדיקה", "רשימת שיחות שתואמו"]
+      },
+      analytics: {
+        name: "אורי - סוכן אנליטיקה ו-COO",
+        role: "מעקב המרות, ניתוח דאטה והפקת דוחות יומיים",
+        avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150",
+        quickActions: ["הפק דוח יומי", "ניתוח עלות לליד", "תחזית סגירות לחודש"]
+      }
+    };
+
+    // Connect to Server-Sent Events (Live real-time feed)
+    function initSSE() {
+      const evtSource = new EventSource('/api/events');
+      evtSource.onmessage = function(event) {
+        try {
+          const data = JSON.parse(event.data);
+          updateUI(data);
+        } catch(e) {}
+      };
+    }
+
+    function updateUI(data) {
+      if (data.stats) {
+        document.getElementById('stat-leads').innerText = Number(data.stats.leadsCollected).toLocaleString();
+        document.getElementById('stat-sent').innerText = Number(data.stats.messagesSent).toLocaleString();
+        document.getElementById('stat-rate').innerText = data.stats.responseRate + '%';
+        document.getElementById('stat-calls').innerText = data.stats.callsBooked;
+      }
+
+      if (data.agentsState) {
+        for (const [key, state] of Object.entries(data.agentsState)) {
+          const statusEl = document.getElementById(`status-${key}`);
+          const dotEl = document.getElementById(`dot-${key}`);
+          if (statusEl) statusEl.innerText = state.statusText || state.status;
+          if (dotEl) {
+            if (state.status === 'processing') {
+              dotEl.className = "absolute bottom-0 right-0 w-3.5 h-3.5 rounded-full bg-amber-400 border-2 border-slate-900 pulse-yellow";
+            } else if (state.status === 'active') {
+              dotEl.className = "absolute bottom-0 right-0 w-3.5 h-3.5 rounded-full bg-emerald-500 border-2 border-slate-900 pulse-green";
+            } else {
+              dotEl.className = "absolute bottom-0 right-0 w-3.5 h-3.5 rounded-full bg-slate-500 border-2 border-slate-900";
+            }
+          }
+        }
+      }
+
+      if (data.activityFeed) {
+        renderFeed(data.activityFeed);
+      }
+    }
+
+    function renderFeed(feed) {
+      const container = document.getElementById('activity-feed');
+      container.innerHTML = feed.map(item => `
+        <div class="bg-slate-950/80 p-3 rounded-2xl border border-slate-800/80 space-y-1">
+          <div class="flex items-center justify-between">
+            <span class="font-bold text-slate-200 text-xs">${item.title}</span>
+            <span class="text-[10px] text-slate-500 font-mono">${item.time}</span>
+          </div>
+          <p class="text-[11px] text-slate-400 leading-tight">${item.desc}</p>
+          <span class="inline-block text-[9px] bg-slate-800 text-slate-300 px-2 py-0.5 rounded font-mono">${item.tag}</span>
+        </div>
+      `).join('');
+    }
+
+    async function loadInitialState() {
+      try {
+        const res = await fetch('/api/state');
+        appState = await res.json();
+        updateUI(appState);
+      } catch(e) {}
+    }
+
+    function selectAgent(agentId) {
+      activeAgent = agentId;
+      const config = AGENT_CONFIGS[agentId];
+      document.getElementById('drawer-name').innerText = config.name;
+      document.getElementById('drawer-role').innerText = config.role;
+      document.getElementById('drawer-avatar').src = config.avatar;
+
+      // Quick actions
+      const actionsContainer = document.getElementById('quick-actions');
+      actionsContainer.innerHTML = config.quickActions.map(action => `
+        <button onclick="sendQuickAction('${action}')" class="bg-slate-800/80 hover:bg-slate-700 text-slate-200 px-3 py-1.5 rounded-xl border border-slate-700/60 transition text-xs">
+          ${action}
+        </button>
+      `).join('');
+
+      renderChatMessages();
       document.getElementById('chat-drawer').classList.remove('translate-x-full');
       document.getElementById('chat-input').focus();
     }
@@ -157,37 +343,62 @@
       document.getElementById('chat-drawer').classList.add('translate-x-full');
     }
 
-    async function sendMessage(e) {
+    function renderChatMessages() {
+      const container = document.getElementById('chat-messages');
+      const messages = (appState && appState.chats && appState.chats[activeAgent]) || [];
+      container.innerHTML = messages.map(m => `
+        <div class="${m.sender === 'user' ? 'bg-indigo-600 mr-auto max-w-[85%] text-white rounded-tl-none' : 'bg-slate-800/80 max-w-[90%] text-slate-200 rounded-tr-none'} p-3.5 rounded-2xl text-xs sm:text-sm leading-relaxed border border-white/5">
+          ${m.text.replace(/\n/g, '<br/>')}
+        </div>
+      `).join('');
+      container.scrollTop = container.scrollHeight;
+    }
+
+    async function handleChatSubmit(e) {
       e.preventDefault();
       const input = document.getElementById('chat-input');
       const text = input.value.trim();
       if (!text) return;
 
-      const container = document.getElementById('chat-messages');
-      container.innerHTML += `<div class="bg-indigo-600 p-3 rounded-2xl rounded-tl-none text-sm text-white mr-auto max-w-[85%]">${text}</div>`;
       input.value = '';
-      container.scrollTop = container.scrollHeight;
+      if (!appState.chats[activeAgent]) appState.chats[activeAgent] = [];
+      appState.chats[activeAgent].push({ sender: 'user', text });
+      renderChatMessages();
 
-      // Loading bubble
       const loadingId = 'loading-' + Date.now();
-      container.innerHTML += `<div id="${loadingId}" class="bg-slate-800/80 p-3 rounded-2xl rounded-tr-none text-sm text-slate-400 italic">מקליד תשובה...</div>`;
+      const container = document.getElementById('chat-messages');
+      container.innerHTML += `<div id="${loadingId}" class="bg-slate-800/60 p-3 rounded-2xl rounded-tr-none text-xs text-slate-400 italic">מעבד פקודה בלייב...</div>`;
       container.scrollTop = container.scrollHeight;
 
       try {
-        const res = await fetch(`/api/agents/${currentAgent}/chat`, {
+        const res = await fetch(`/api/agents/${activeAgent}/chat`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ message: text })
         });
         const data = await res.json();
-        document.getElementById(loadingId).remove();
-        container.innerHTML += `<div class="bg-slate-800/80 p-3 rounded-2xl rounded-tr-none text-sm text-slate-200">${data.reply.replace(/\n/g, '<br/>')}</div>`;
+        document.getElementById(loadingId)?.remove();
+        appState.chats[activeAgent].push({ sender: 'agent', text: data.reply });
+        renderChatMessages();
       } catch (err) {
-        document.getElementById(loadingId).remove();
-        container.innerHTML += `<div class="bg-red-900/50 border border-red-500 p-3 rounded-2xl text-sm text-red-200">שגיאה בתקשורת עם השרת</div>`;
+        document.getElementById(loadingId)?.remove();
+        container.innerHTML += `<div class="bg-red-900/50 p-3 rounded-2xl text-xs text-red-300">שגיאה בתקשורת עם השרת</div>`;
       }
-      container.scrollTop = container.scrollHeight;
     }
+
+    function sendQuickAction(action) {
+      document.getElementById('chat-input').value = action;
+      document.querySelector('#chat-drawer form button[type="submit"]').click();
+    }
+
+    async function triggerSimulate(type) {
+      await fetch(`/api/simulate/${type}`, { method: 'POST' });
+    }
+
+    window.onload = () => {
+      initSSE();
+      loadInitialState();
+    };
   </script>
 </body>
 </html>
